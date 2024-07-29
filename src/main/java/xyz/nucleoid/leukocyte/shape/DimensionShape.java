@@ -1,5 +1,6 @@
 package xyz.nucleoid.leukocyte.shape;
 
+import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.registry.RegistryKey;
@@ -12,12 +13,11 @@ import net.minecraft.world.World;
 import xyz.nucleoid.stimuli.filter.EventFilter;
 
 public final class DimensionShape implements ProtectionShape {
-    public static final MapCodec<DimensionShape> CODEC = RecordCodecBuilder.mapCodec(instance -> {
+    public static final Codec<DimensionShape> CODEC = RecordCodecBuilder.create(instance -> {
         return instance.group(
                 Identifier.CODEC.xmap(id -> RegistryKey.of(RegistryKeys.WORLD, id), RegistryKey::getValue).fieldOf("dimension").forGetter(scope -> scope.dimension)
         ).apply(instance, DimensionShape::new);
     });
-
     private final RegistryKey<World> dimension;
 
     private final EventFilter eventFilter;
@@ -34,7 +34,7 @@ public final class DimensionShape implements ProtectionShape {
     }
 
     @Override
-    public MapCodec<? extends ProtectionShape> getCodec() {
+    public Codec<? extends ProtectionShape> getCodec() {
         return CODEC;
     }
 

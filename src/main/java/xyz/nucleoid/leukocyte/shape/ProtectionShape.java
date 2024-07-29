@@ -12,10 +12,10 @@ import xyz.nucleoid.stimuli.filter.EventFilter;
 import java.util.function.Function;
 
 public interface ProtectionShape {
-    StringRegistry<MapCodec<? extends ProtectionShape>> REGISTRY = new StringRegistry<>();
+    StringRegistry<Codec<? extends ProtectionShape>> REGISTRY = new StringRegistry<>();
     Codec<ProtectionShape> CODEC = REGISTRY.dispatchStable(ProtectionShape::getCodec, Function.identity());
 
-    static <T extends ProtectionShape> void register(String identifier, MapCodec<T> codec) {
+    static <T extends ProtectionShape> void register(String identifier, Codec<T> codec) {
         REGISTRY.register(identifier, codec);
     }
 
@@ -48,7 +48,7 @@ public interface ProtectionShape {
 
     EventFilter asEventFilter();
 
-    MapCodec<? extends ProtectionShape> getCodec();
+    Codec<? extends ProtectionShape> getCodec();
 
     MutableText display();
 

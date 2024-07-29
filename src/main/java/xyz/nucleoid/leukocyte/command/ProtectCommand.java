@@ -8,6 +8,15 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.exceptions.DynamicCommandExceptionType;
+import com.sk89q.worldedit.IncompleteRegionException;
+import com.sk89q.worldedit.LocalSession;
+import com.sk89q.worldedit.WorldEdit;
+import com.sk89q.worldedit.fabric.FabricAdapter;
+import com.sk89q.worldedit.math.BlockVector3;
+import com.sk89q.worldedit.regions.Region;
+import com.sk89q.worldedit.session.SessionManager;
+import com.sk89q.worldedit.world.World;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.command.argument.BlockPosArgumentType;
 import net.minecraft.command.argument.DimensionArgumentType;
 import net.minecraft.command.argument.GameProfileArgumentType;
@@ -15,6 +24,7 @@ import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.text.Text;
 import net.minecraft.text.MutableText;
 import net.minecraft.util.Formatting;
+import net.minecraft.util.math.BlockPos;
 import xyz.nucleoid.leukocyte.Leukocyte;
 import xyz.nucleoid.leukocyte.authority.Authority;
 import xyz.nucleoid.leukocyte.command.argument.AuthorityArgument;
@@ -32,6 +42,7 @@ import java.util.function.UnaryOperator;
 
 import static net.minecraft.server.command.CommandManager.argument;
 import static net.minecraft.server.command.CommandManager.literal;
+import static xyz.nucleoid.leukocyte.command.ShapeCommand.addShape;
 
 public final class ProtectCommand {
     private static final DynamicCommandExceptionType AUTHORITY_ALREADY_EXISTS = new DynamicCommandExceptionType(id -> {
@@ -43,7 +54,7 @@ public final class ProtectCommand {
         dispatcher.register(
             literal("protect")
                 .requires(source -> PermissionAccessor.INSTANCE.hasPermission(source, "leukocyte.commands", 4))
-                .then(literal("add")
+                    .then(literal("add")
                     .then(argument("authority", StringArgumentType.string())
                     .executes(ProtectCommand::addAuthority)
                         .then(literal("with")
@@ -79,6 +90,42 @@ public final class ProtectCommand {
                         .executes(ProtectCommand::setLevel)
                     )))
                 )
+                    .then(literal("inclusion")
+                            .then(literal("add")
+                                    .then(AuthorityArgument.argument("authority")
+                                            .then(literal("player")
+                                                    .then(argument("player", GameProfileArgumentType.gameProfile())
+                                                            .executes(ProtectCommand::addPlayerInclusion))
+                                            )
+
+                                            .then(literal("role")
+                                                    .then(RoleArgument.argument("role")
+                                                            .executes(ProtectCommand::addRoleInclusion))
+                                            )
+
+                                            .then(literal("permission")
+                                                    .then(argument("permission", StringArgumentType.word())
+                                                            .executes(ProtectCommand::addPermissionInclusion))
+                                            )
+                                    ))
+                            .then(literal("remove")
+                                    .then(AuthorityArgument.argument("authority")
+                                            .then(literal("player")
+                                                    .then(argument("player", GameProfileArgumentType.gameProfile())
+                                                            .executes(ProtectCommand::removePlayerInclusion))
+                                            )
+
+                                            .then(literal("role")
+                                                    .then(RoleArgument.argument("role")
+                                                            .executes(ProtectCommand::removeRoleInclusion))
+                                            )
+
+                                            .then(literal("permission")
+                                                    .then(argument("permission", StringArgumentType.word())
+                                                            .executes(ProtectCommand::removePermissionInclusion))
+                                            )
+                                    ))
+                    )
                 .then(literal("exclusion")
                     .then(literal("add")
                         .then(AuthorityArgument.argument("authority")
@@ -120,9 +167,37 @@ public final class ProtectCommand {
                     .executes(ProtectCommand::displayAuthority)
                 ))
                 .then(literal("list").executes(ProtectCommand::listAuthorities))
-                .then(literal("test").executes(ProtectCommand::testRulesHere))
+                    .then(literal("test").executes(ProtectCommand::testRulesHere))
+                    .then(literal("wand").executes(ProtectCommand::addWand))
         );
         // @formatter:on
+    }
+
+    private static int addWand(CommandContext<ServerCommandSource> serverCommandSourceCommandContext) {
+        if (FabricLoader.getInstance().isModLoaded("worldedit")) {
+            SessionManager manager = WorldEdit.getInstance().getSessionManager();
+            LocalSession localSession = manager.get(FabricAdapter.adaptCommandSource(serverCommandSourceCommandContext.getSource()));
+            Region region;
+            World selectionWorld = localSession.getSelectionWorld();
+            try {
+                if (selectionWorld == null) throw new IncompleteRegionException();
+                region = localSession.getSelection(selectionWorld);
+                var dimension = serverCommandSourceCommandContext.getSource().getWorld().getRegistryKey();
+
+                BlockVector3 min = region.getMinimumPoint();
+                BlockVector3 max = region.getMaximumPoint();
+
+                BlockPos startPos = new BlockPos(min.x(), min.y(), min.z());
+                BlockPos endPos = new BlockPos(max.x(), max.y(), max.z());
+
+                return addShape(serverCommandSourceCommandContext.getSource(), ProtectionShape.box(dimension, startPos, endPos));
+            } catch (IncompleteRegionException ex) {
+                serverCommandSourceCommandContext.getSource().sendMessage(Text.of("Invalid region/Incomplete region."));
+            } catch (CommandSyntaxException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return 0;
     }
 
     private static int addAuthority(CommandContext<ServerCommandSource> context) throws CommandSyntaxException {
@@ -222,6 +297,36 @@ public final class ProtectCommand {
         return Command.SINGLE_SUCCESS;
     }
 
+    private static int addPlayerInclusion(CommandContext<ServerCommandSource> context) throws CommandSyntaxException {
+        var authority = AuthorityArgument.get(context, "authority");
+        var players = GameProfileArgumentType.getProfileArgument(context, "player");
+
+        var inclusions = authority.getIncluded();
+
+        int count = (int) players.stream()
+                .filter(inclusions::addPlayer)
+                .count();
+
+        context.getSource().sendFeedback(() -> Text.literal("Added " + count + " player inclusion to " + authority.getKey()), true);
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int removePlayerInclusion(CommandContext<ServerCommandSource> context) throws CommandSyntaxException {
+        var authority = AuthorityArgument.get(context, "authority");
+        var players = GameProfileArgumentType.getProfileArgument(context, "player");
+
+        var inclusions = authority.getIncluded();
+
+        int count = (int) players.stream()
+                .filter(inclusions::removePlayer)
+                .count();
+
+        context.getSource().sendFeedback(() -> Text.literal("Removed " + count + " player inclusion from " + authority.getKey()), true);
+
+        return Command.SINGLE_SUCCESS;
+    }
+
     private static int addPlayerExclusion(CommandContext<ServerCommandSource> context) throws CommandSyntaxException {
         var authority = AuthorityArgument.get(context, "authority");
         var players = GameProfileArgumentType.getProfileArgument(context, "player");
@@ -252,6 +357,32 @@ public final class ProtectCommand {
         return Command.SINGLE_SUCCESS;
     }
 
+    private static int addRoleInclusion(CommandContext<ServerCommandSource> context) throws CommandSyntaxException {
+        var authority = AuthorityArgument.get(context, "authority");
+        var role = RoleArgument.get(context, "role");
+
+        if (authority.getIncluded().addRole(role)) {
+            context.getSource().sendFeedback(() -> Text.literal("Added '" + role + "' inclusion to " + authority.getKey()), true);
+        } else {
+            context.getSource().sendError(Text.literal("'" + role + "' is already included"));
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int removeRoleInclusion(CommandContext<ServerCommandSource> context) throws CommandSyntaxException {
+        var authority = AuthorityArgument.get(context, "authority");
+        var role = RoleArgument.get(context, "role");
+
+        if (authority.getIncluded().removeRole(role)) {
+            context.getSource().sendFeedback(() -> Text.literal("Removed '" + role + "' inclusion from " + authority.getKey()), true);
+        } else {
+            context.getSource().sendError(Text.literal("'" + role + "' is not included"));
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
     private static int addRoleExclusion(CommandContext<ServerCommandSource> context) throws CommandSyntaxException {
         var authority = AuthorityArgument.get(context, "authority");
         var role = RoleArgument.get(context, "role");
@@ -277,6 +408,33 @@ public final class ProtectCommand {
 
         return Command.SINGLE_SUCCESS;
     }
+
+    private static int addPermissionInclusion(CommandContext<ServerCommandSource> context) throws CommandSyntaxException {
+        var authority = AuthorityArgument.get(context, "authority");
+        var permission = StringArgumentType.getString(context, "permission");
+
+        if (authority.getIncluded().addPermission(permission)) {
+            context.getSource().sendFeedback(() -> Text.literal("Added '" + permission + "' inclusion to " + authority.getKey()), true);
+        } else {
+            context.getSource().sendError(Text.literal("'" + permission + "' is already included."));
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private static int removePermissionInclusion(CommandContext<ServerCommandSource> context) throws CommandSyntaxException {
+        var authority = AuthorityArgument.get(context, "authority");
+        var permission = StringArgumentType.getString(context, "permission");
+
+        if (authority.getIncluded().removePermission(permission)) {
+            context.getSource().sendFeedback(() -> Text.literal("Removed '" + permission + "' inclusion from " + authority.getKey()), true);
+        } else {
+            context.getSource().sendError(Text.literal("'" + permission + "' is not included."));
+        }
+
+        return Command.SINGLE_SUCCESS;
+    }
+
 
     private static int addPermissionExclusion(CommandContext<ServerCommandSource> context) throws CommandSyntaxException {
         var authority = AuthorityArgument.get(context, "authority");
@@ -389,6 +547,8 @@ public final class ProtectCommand {
             MutableText text = Text.literal("Information for '" + authority.getKey() + "':\n");
             text = text.append(" Level: ").append(Text.literal(String.valueOf(authority.getLevel())).formatted(Formatting.AQUA)).append("\n");
             text = text.append(" Shapes:\n").append(authority.getShapes().displayList());
+            text = text.append(" Exclusions:\n").append(authority.getExclusions().displayList());
+            text = text.append(" Inclusions:\n").append(authority.getIncluded().displayList());
 
             var rules = authority.getRules();
             if (!rules.isEmpty()) {

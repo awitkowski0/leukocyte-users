@@ -17,6 +17,7 @@ public final class LeukocyteInitializer implements ModInitializer {
         ProtectionShape.register("box", BoxShape.CODEC);
         ProtectionShape.register("union", UnionShape.CODEC);
 
+
         Leukocyte.registerRuleEnforcer(LeukocyteRuleEnforcer.INSTANCE);
 
         Stimuli.registerSelector(new LeukocyteEventListenerSelector());

@@ -7,11 +7,22 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
+import com.sk89q.worldedit.IncompleteRegionException;
+import com.sk89q.worldedit.LocalSession;
+import com.sk89q.worldedit.WorldEdit;
+import com.sk89q.worldedit.fabric.FabricAdapter;
+import com.sk89q.worldedit.math.BlockVector3;
+import com.sk89q.worldedit.regions.Region;
+import com.sk89q.worldedit.session.SessionManager;
+import com.sk89q.worldedit.util.formatting.text.TextComponent;
+import com.sk89q.worldedit.world.World;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.command.argument.BlockPosArgumentType;
 import net.minecraft.command.argument.DimensionArgumentType;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
+import net.minecraft.util.math.BlockPos;
 import xyz.nucleoid.leukocyte.Leukocyte;
 import xyz.nucleoid.leukocyte.command.argument.AuthorityArgument;
 import xyz.nucleoid.leukocyte.roles.PermissionAccessor;
@@ -39,7 +50,7 @@ public final class ShapeCommand {
         dispatcher.register(
             literal("protect")
                 .requires(source -> PermissionAccessor.INSTANCE.hasPermission(source, "leukocyte.commands", 4))
-                .then(literal("shape")
+                    .then(literal("shape")
                     .then(literal("start").executes(ShapeCommand::startShape))
                     .then(literal("stop").executes(ShapeCommand::stopShape))
                     .then(literal("add")
@@ -130,7 +141,7 @@ public final class ShapeCommand {
         return addShape(context.getSource(), ProtectionShape.universe());
     }
 
-    private static int addShape(ServerCommandSource source, ProtectionShape shape) throws CommandSyntaxException {
+    static int addShape(ServerCommandSource source, ProtectionShape shape) throws CommandSyntaxException {
         var player = source.getPlayer();
 
         var shapeBuilder = ShapeBuilder.from(player);
