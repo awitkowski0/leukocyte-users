@@ -130,7 +130,7 @@ public final class ShapeCommand {
         return addShape(context.getSource(), ProtectionShape.universe());
     }
 
-    private static int addShape(ServerCommandSource source, ProtectionShape shape) throws CommandSyntaxException {
+    static int addShape(ServerCommandSource source, ProtectionShape shape) throws CommandSyntaxException {
         var player = source.getPlayer();
 
         var shapeBuilder = ShapeBuilder.from(player);

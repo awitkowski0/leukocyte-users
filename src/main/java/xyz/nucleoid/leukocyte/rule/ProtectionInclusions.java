@@ -5,27 +5,26 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
-import xyz.nucleoid.leukocyte.roles.PermissionAccessor;
-import xyz.nucleoid.leukocyte.roles.RoleAccessor;
 import xyz.nucleoid.leukocyte.util.ProtectionUtil;
-import xyz.nucleoid.stimuli.filter.EventFilter;
 
 import java.util.*;
 
-public final class ProtectionExclusions {
+/**
+ * Essentially the opposite of an exclusion, these are the people that ONLY get access to the rules in the claim.
+ */
+public final class ProtectionInclusions {
     private static final Codec<UUID> UUID_CODEC = Codec.STRING.xmap(UUID::fromString, UUID::toString);
 
-    public static final Codec<ProtectionExclusions> CODEC = RecordCodecBuilder.create(instance -> {
+    public static final Codec<ProtectionInclusions> CODEC = RecordCodecBuilder.create(instance -> {
         return instance.group(
-                Codec.STRING.listOf().fieldOf("roles").forGetter(exclusions -> new ArrayList<>(exclusions.roles)),
-                Codec.STRING.listOf().optionalFieldOf("permissions", Collections.emptyList()).forGetter(exclusions -> new ArrayList<>(exclusions.permissions)),
-                UUID_CODEC.listOf().fieldOf("players").forGetter(exclusions -> new ArrayList<>(exclusions.players)),
-                Codec.BOOL.fieldOf("include_operators").forGetter(exclusions -> exclusions.includeOperators)
-        ).apply(instance, ProtectionExclusions::new);
+                Codec.STRING.listOf().fieldOf("roles").forGetter(inclusions -> new ArrayList<>(inclusions.roles)),
+                Codec.STRING.listOf().optionalFieldOf("permissions", Collections.emptyList()).forGetter(inclusions -> new ArrayList<>(inclusions.permissions)),
+                UUID_CODEC.listOf().fieldOf("players").forGetter(inclusions -> new ArrayList<>(inclusions.players)),
+                Codec.BOOL.fieldOf("include_operators").forGetter(inclusions -> inclusions.includeOperators)
+        ).apply(instance, ProtectionInclusions::new);
     });
 
     private final Set<String> roles;
@@ -34,27 +33,17 @@ public final class ProtectionExclusions {
     private boolean includeOperators;
     private Set<String> permissions;
 
-    public ProtectionExclusions() {
+    public ProtectionInclusions() {
         this.roles = new ObjectOpenHashSet<>();
         this.permissions = new ObjectOpenHashSet<>();
         this.players = new ObjectOpenHashSet<>();
     }
 
-    private ProtectionExclusions(Collection<String> roles, Collection<String> permissions, Collection<UUID> players, boolean includeOperators) {
+    private ProtectionInclusions(Collection<String> roles, Collection<String> permissions, Collection<UUID> players, boolean includeOperators) {
         this.roles = new ObjectOpenHashSet<>(roles);
         this.players = new ObjectOpenHashSet<>(players);
         this.permissions = new ObjectOpenHashSet<>(permissions);
         this.includeOperators = includeOperators;
-    }
-
-    public EventFilter applyToFilter(EventFilter filter) {
-        return source -> {
-            if (filter.accepts(source)) {
-                var entity = source.getEntity();
-                return !(entity instanceof PlayerEntity player && this.isExcluded(player));
-            }
-            return false;
-        };
     }
 
     public void includeOperators() {
@@ -81,12 +70,17 @@ public final class ProtectionExclusions {
         return this.players.remove(profile.getId());
     }
 
-    public boolean isExcluded(PlayerEntity player) {
+    public boolean isIncluded(PlayerEntity player) {
         return ProtectionUtil.check(player, this.players, this.roles, this.permissions);
     }
 
-    public ProtectionExclusions copy() {
-        return new ProtectionExclusions(this.roles, this.permissions, this.players, this.includeOperators);
+
+    public ProtectionInclusions copy() {
+        return new ProtectionInclusions(this.roles, this.permissions, this.players, this.includeOperators);
+    }
+
+    public boolean isEmpty() {
+        return this.players.isEmpty() && this.permissions.isEmpty() && this.roles.isEmpty();
     }
 
     public Text displayList() {
